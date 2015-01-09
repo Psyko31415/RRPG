@@ -833,9 +833,9 @@ class Square(Enemy, Movable_object, Animation, Attacking_object):
 					self.dir = negative(hero.x - self.x)
 					if not self.on_floor(self.floor):
 						if abs(self.x - self.floor.x) < abs(self.x - (self.floor.x + self.floor.w)):
-							self.x = self.floor.x
+							self.dir = 1
 						else:
-							self.x = self.floor.x + self.floor.w - self.w
+							self.dir = -1
 					self.speed[0] = self.walk_speed * self.dir
 					if hero.collide(other = self.attack_range) and self.att_cd == 0 and self.stunned == 0:
 						self.attack(hero)
@@ -859,8 +859,7 @@ class Square(Enemy, Movable_object, Animation, Attacking_object):
 			
 			self.y += self.speed[1]
 			self.x += self.speed[0]
-			
-			
+
 		else:
 			self.respawn_cd -= 1
 			if self.respawn_cd == 0:
@@ -878,10 +877,6 @@ class Square(Enemy, Movable_object, Animation, Attacking_object):
 	def attack(self, hero):
 		if self.att_cd == 0:
 			self.charge_init(100, 10, self.dir, 10)
-		
-class Triangle(Physics):
-	def __init__(self, floor, type, level):
-		super().__init__(type, level)
 
 class Circle(Enemy, Animation):
 	def __init__(self, center, type, level):
@@ -1208,7 +1203,7 @@ def game_loop():
 				if event.key == pygame.K_RIGHT and hero.speed[0] > 0:
 					hero.speed[0] = 0
 				if event.key == pygame.K_UP or event.key == pygame.K_DOWN:
-					hero.ladder_speed= 0
+					hero.ladder_speed = 0
 		
 		hero.move(floors, ladders, room, enemies)
 		
