@@ -52,7 +52,7 @@ class Physics():
 			self.speed[1] = 0
 		return(floor_collision)
 
-	def collide(self, other = None, self_part = None, other_part = None, not_inside = False):
+	def collide(self, other = None, self_part = None, other_part = None):
 		if self_part == None:
 			if other.y < self.y < other.y + other.h or other.y < self.y + self.h < other.y + other.h or self.y < other.y < self.y + self.h or self.y < other.y + other.h < self.y + self.h:
 				if self.x < other.x < self.x + self.w or self.x < other.x + other.w < self.x + self.w or other.x > self.x > other.x + other.w or other.x < self.x + self.w < other.x + other.w:
@@ -60,8 +60,6 @@ class Physics():
 		else:
 			if other_part.y < self_part.y < other_part.y + other_part.h or other_part.y < self_part.y + self_part.h < other_part.y + other_part.h or self_part.y < other_part.y < self_part.y + self_part.h or self_part.y < other_part.y + other_part.h < self_part.y + self_part.h:
 				if self_part.x < other_part.x < self_part.x + self_part.w or self_part.x < other_part.x + other_part.w < self_part.x + self_part.w or other_part.x < self_part.x < other_part.x + other_part.w or other_part.x < self_part.x + self_part.w < other_part.x + other_part.w:
-					if not_inside:
-						self.y = other_part.y - self.h
 					return(True)
 	
 	def friction(self):
@@ -88,7 +86,7 @@ class Physics():
 			return(Floor(x,y,w,h))
 			
 	def on_floor(self, floor):
-		if self.collide(other = pygame.Rect(floor.x + self.w + self.speed[0], floor.y, floor.w - self.w - self.speed[0], -10)):
+		if floor.x + self.w < self.x < floor.x + floor.w - self.w or floor.x + self.w < self.x + self.w < floor.x + floor.w - self.w:
 			return(True)
 
 class Animation():
@@ -123,10 +121,12 @@ class Animation():
 				self.anis[ani_count][3] += 1
 
 class Combat():
-	def knockback(self, target, dir, speed, stun):
+	def knockback(self, target, dir, speed, stun, floor = 0):
 		if target.unstopable == 0:
 			target.speed[0] = speed[0] * dir
 			target.speed[1] = speed[1]
+			if floor != 0 and not self.on_floor(floor):
+				self.speed[0] = 0
 			target.stunned = stun
 			
 	def recieve_dmg(self, attacker, amount, type):
@@ -239,11 +239,12 @@ class BaseHero(Physics, Animation, Combat):
 		#--- Jumping variables ---
 		
 		self.jump_power = -13
+		self.jump_power_launch = -19
 		self.floor_collision = False
-		self.jumps = 1
-		self.jumps_init = 1
+		self.jumps = 10000
+		self.jumps_init = self.jumps
 		self.jump_duration = 0
-		self.jump_duration_init = 15
+		self.jump_duration_init = 10
 	
 	def move(self, floors, ladders, room, enemies):
 		
@@ -311,7 +312,7 @@ class BaseHero(Physics, Animation, Combat):
 		if self.floor_collision:
 			self.jumps = self.jumps_init
 		
-		if self.jump_duration != 0:
+		if self.jump_duration > self.jump_duration_init - 5:
 			self.speed[1] = self.jump_power
 		
 	
@@ -401,8 +402,10 @@ class BaseHero(Physics, Animation, Combat):
 		if move_room_x:
 			room.move_view((self.speed[0], 0))
 		
-		if self.changed_dir:
-			self.changed_dir = False
+		self.changed_dir = False
+			
+		self.room_location[0] += self.speed[0]
+		self.room_location[1] += self.speed[1]
 		
 	def display(self):
 		if self.dir == "right":
@@ -472,7 +475,7 @@ class Sword():
 		self.rect = pygame.Rect(self.x, self.y, self.sizes[self.img_number][0], self.sizes[self.img_number][1])
 
 class Room():
-	def __init__(self, w, h, floors, enemies, projectiles, ladders, spikes, hero):
+	def __init__(self, w, h, floors, enemies, projectiles, ladders, spikes, hero, exits):
 		self.w = w
 		self.h = h
 		self.enemies = enemies
@@ -481,6 +484,7 @@ class Room():
 		self.spikes = spikes
 		self.projectiles = projectiles
 		self.hero = hero
+		self.exits = exits
 		
 	def move_view(self, speed):
 		for floor in self.floors:
@@ -504,79 +508,93 @@ class Room():
 		self.hero.x -= speed[0]
 		self.hero.y -= speed[1]
 		self.hero.display_x -= speed[0]
-		self.hero.room_location[0] += speed[0]
-		self.hero.room_location[1] += speed[1]
 		
 	def create_random(self, level, exits = 0):
 		
-		self.exits = [] 
-		self.floors = []
+		self.exits = []  
+		self.floors = [] 
 		self.squares = []
 		self.circles = []
 		self.enemies = []
+		self.ladders = []
+		self.spikes = []
 		
 		w_units = random.randint(15,30)
 		h_units = random.randint(15,25)
-
+		
 		self.w = w_units * units_size 
 		self.h = h_units * units_size
+		
+		#--- Create exits ---
+		
 		if exits == 0:
-			exit_count = randon.randint(1,3)
+			exit_count = random.randint(1,3)
 		else:
 			exit_count = exits
 		
 		for i in range(exit_count):
 			wall = random.randint(1,4)
 			if wall == 1:
-				self.exits.append(Exit(0, random.randint(units_size * 2, self.h - 2 * units_size), exits, wall))				
+				self.exits.append(Exit(0, random.randint(units_size * 2, self.h - 2 * units_size), self.exits, wall))				
 			elif wall == 2:
-				self.exits.append(Exit(random.randint(units_size * 2, self.w - 2 * units_size), 0, exits, wall))
+				self.exits.append(Exit(random.randint(units_size * 2, self.w - 2 * units_size), 0, self.exits, wall))
 			elif wall == 3:
-				pass
-			else:
-				pass
+				self.exits.append(Exit(self.w, random.randint(units_size * 2, self.h - 2 * units_size), self.exits, wall))
+			elif wall == 4:
+				self.exits.append(Exit(random.randint(units_size * 2, self.w - 2 * units_size), self.h, self.exits, wall))
+		
+		for exit in self.exits:
+			floor1, floor2 = exit.return_floors()
+			self.floors.append(floor1)
+			self.floors.append(floor2)
+		
+		floor_start_x = self.exits[0].x
+		floor_start_y = self.exits[0].y
+		
 		self.enemies.append(self.squares)
 		self.enemies.append(self.circles)
 
 class Exit(Physics):
-	def __init__(self, x, y, exits, wall):
-		global floors
+	def __init__(self, x, y, exits, wall, size = 200):
 		self.x = x
 		self.y = y
-		self.size = 300
+		self.size = size
 		self.wall = wall
-		self.x, self.y = self.check_exit(exits)
+		self.exits = exits
+		self.x, self.y = self.check_exit()
 		
 		if wall == 1 or wall == 3:
-			floors.append(Floor(self.x, self.y - self.size/2, self.size, 25))
-			floors.append(Floor(self.x, self.y + self.size/2, self.size, 25))
+			self.floor1 = Floor(self.x, self.y - self.size/2, self.size, 25) 
+			self.floor2 = Floor(self.x, self.y + self.size/2, self.size, 25)
+			self.exit_rect = pygame.Rect(self.x, self.y - self.size/2, 25, self.size)
 		else:
-			floors.append(Floor(self.x - self.size/2, self.y, 25, self.size))
-			floors.append(Floor(self.x - self.size/2, self.y, 25, self.size))
+			self.floor1 = Floor(self.x - self.size/2, self.y, 25, self.size)
+			self.floor2 = Floor(self.x + self.size/2, self.y, 25, self.size)
+			self.exit_rect = pygame.Rect(self.x - self.size/2, self.y, self.size, 25)
 
-	def check_exit(self, exits):
+	def check_exit(self):
 		count = 0
 		loop_count = 1
-		can_make_exit = False
 		self.check_dir = 1
+		can_make_exit = 0
 		
-		while not can_make_exit:
-			if exits != []:
-				for exit in exits:
-					if self.wall == exit.wall:
+		while True:
+			can_make_exit = 0
+			if self.exits != []:
+				for exit in self.exits:
+					if self.wall == exit.wall and self != exit:
 						if exit.wall == 1 or exit.wall == 3:
-							if self.collide(self_part = pygame.Rect(self.x, self.y - (dir * self.size) * (count + 1), self.size, 2 * self.size), other_part = pygame.Rect(exit.x, exit.y - (exit.size/2), exit.size, exit.size)):
-								can_make_exit = False
-							else:
-								can_make_exit = True
+							if (self.y - (self.check_dir * self.size * count) <= exit.y <= self.y - (self.check_dir * self.size * count) + self.size) or (self.y - (self.check_dir * self.size * count) <= exit.y + exit.size <= self.y - (self.check_dir * self.size * count) + self.size):
+								can_make_exit += 1
 						else:
-							if self.collide(self_part = pygame.Rect(self.x - (dir * self.size) * (count + 1), self.y, 2 * self.size, self.size), other_part = pygame.Rect(exit.x - self.size/2, exit.y, exit.size, exit.size)):
-								can_make_exit = False
-							else:
-								can_make_exit = True
+							if (self.x - (self.check_dir * self.size * count) <= exit.x <= self.x - (self.check_dir * self.size * count) + self.size) or (self.x - (self.check_dir * self.size * count) <= exit.x + exit.size <= exit.x - (self.check_dir * self.size * count) + self.size):
+								can_make_exit += 1
 			else:
-				can_make_exit = True
+				break
 			
+			if can_make_exit == 0:
+				break
+
 			if loop_count%2 == 0:
 				if self.check_dir == 1:
 					self.check_dir = -1
@@ -585,27 +603,29 @@ class Exit(Physics):
 			else: 
 				count += 1	
 			loop_count += 1
-			print(loop_count)
 			
-		if self.wall == 1 or self.wall == 3:	
-			return(self.x, self.y + (count + 1) * self.size)
+		if self.wall == 1 or self.wall == 3:
+			return(self.x, self.y - (self.check_dir * self.size * count))
 		else:
-			return(self.x - (count + 1) * self.size, self.y)
-		
+			return(self.x - (self.check_dir * self.size * count), self.y)
+
+	def return_floors(self):
+		return(self.floor1, self.floor2)
+			
 class Floor(Physics):
 	def __init__(self, x, y, w, h):
 		self.x = x
 		self.y = y
 		self.w = w
 		self.h = h
-		self.sides(var = h)
+		self.sides()
 	
 	def display(self, hero):
 		pygame.draw.rect(gameDisplay, gray, (self.x, self.y, self.w, self.h))
 		
 	def re_pos(self):
-		self.sides(var = self.h)
-		self.side_top = pygame.Rect((self.x, self.y - 1, self.w, self.h + 1))
+		self.sides()
+		self.side_top = pygame.Rect((self.x, self.y - 1, self.w, 10))
 		
 class Prjoectile(Physics):
 	def __init__(self, img, target_pos, center_pos, speed, dmg, dmg_type, pen):
@@ -823,6 +843,8 @@ class Attacking_object():
 				self.charge_dur -= 1
 				self.unstopable = 1
 				self.speed[0] = self.charge_speed
+				if not self.on_floor(floor):
+					self.speed[0] = 0
 				if self.collide(other = hero):
 					self.unstopable = 0
 					self.knockback(hero, negative(self.speed[0]), (hero.walk_speed, -15), 20)
@@ -1060,7 +1082,7 @@ class Circle(Enemy, Animation):
 		self.blink_durr = 0
 		self.blink_durr_init = 10
 		
-	def AI(self, hero):
+	def AI(self, hero, room):
 		if self.hp_curr <= 0:
 			self.alive = False
 		if self.alive:
@@ -1090,7 +1112,7 @@ class Circle(Enemy, Animation):
 				self.pos = ()
 				
 			if self.detect_hero and self.att_cd == 0:
-				self.attack()
+				self.attack(room)
 				self.att_cd = self.att_cd_max
 
 			#--- Looking at player ---
@@ -1130,9 +1152,8 @@ class Circle(Enemy, Animation):
 				self.hp_curr = self.hp_max
 				self.health_display = 0
 			
-	def attack(self):
-		global projectiles
-		projectiles.append(Prjoectile(self.proj_img, self.pos, self.center, self.proj_speed, 5, 0, 0)) #hardcode 5 är skadan av attacken 0 är typen och den andra nollan är pen
+	def attack(self, room):
+		room.projectiles.append(Prjoectile(self.proj_img, self.pos, self.center, self.proj_speed, 5, 0, 0)) #hardcode 5 är skadan av attacken 0 är typen och den andra nollan är pen
 		
 	def display(self, hero):
 		if self.collide(other = hero.view_range) and self.alive:
@@ -1241,6 +1262,8 @@ def game_loop():
 	
 	global projectiles, floors
 	
+	#test room
+	
 	floors = []
 	ladders = []
 	spikes = []
@@ -1248,29 +1271,37 @@ def game_loop():
 	circles = []
 	projectiles = []
 	enemies = []
+	exits = []
 	floors.append(Floor(100, 700, 500, 25))
 	floors.append(Floor(200, 200, 300, 25))
 	floors.append(Floor(600, 700, 400, 25))
 	floors.append(Floor(600, 200, 300, 25))
 	floors.append(Floor(1500, 700, 100, 25))
 	ladders.append(Ladder(floors[0], floors[1], 300))
+	exits.append(Exit(1500, 1000, exits, 2))	
+	exits.append(Exit(1500, 1000, exits, 2))
+	exits.append(Exit(1500, 1000, exits, 2))
+	exits.append(Exit(1500, 1000, exits, 2))
 	squares.append(Square(floors[3], "normal", 1))
 	circles.append(Circle((700,500), "normal", 1))
 	spikes.append(Spike(floors[0], 6, 200))
 	sword = Sword("images\\hero\\equipments\\swords\\basic\\*.png", [(105,31),(48,42),(107,94),(38,38),(38,38),(38,38)],[(49,8),(5,4),(46,85),(6,31),(6,31),(6,31)], 10)
 	equips = [sword]
-	hero = BaseHero(100,100,40,87, [100, 1950], equips)
+	hero = BaseHero(0,0,40,87, [0, 0], equips)
 	gui = GUI(hero)
 	
 	enemies.append(squares)
 	enemies.append(circles)
 	
-	room = Room(3000, 2000, floors, enemies, projectiles, ladders, spikes, hero)
+	room = Room(3000, 2000, floors, enemies, projectiles, ladders, spikes, hero, exits)
+	#room.create_random(1)
 	
 	while True:
 		
 		gameDisplay.fill(white)
 		
+		print(room.exits[0].x, room.exits[0].y, hero.room_location)
+
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				game_quit()
@@ -1316,41 +1347,44 @@ def game_loop():
 				if event.key == pygame.K_SPACE:
 					hero.jump_duration = 0
 
-		hero.move(floors, ladders, room, enemies)
+		hero.move(room.floors, room.ladders, room, room.enemies)
 		
-		for floor in floors:
+		for floor in room.floors:
 			floor.re_pos()
 		
-		for square in enemies[0]:
+		for square in room.enemies[0]:
 			square.move(hero)
 			square.display(hero)
 		
-		for circle in enemies[1]:
-			circle.AI(hero)
+		for circle in room.enemies[1]:
+			circle.AI(hero, room)
 			circle.display(hero)
 		
-		for proj in projectiles:
-			proj.move(floors, hero)
+		for proj in room.projectiles:
+			proj.move(room.floors, hero)
 			proj.display(hero)
 			if not proj.alive:
-				projectiles.pop(projectiles.index(proj))
+				room.projectiles.pop(room.projectiles.index(proj))
 				
-		for floor in floors:
+		for floor in room.floors:
 			floor.display(hero)
 		
-		for ladder in ladders:
+		for ladder in room.ladders:
 			ladder.display(hero)
 		
-		for spike in spikes:
+		for spike in room.spikes:
 			spike.display(hero)
 			for obj in spike.list:
 				if hero.collide(other = obj):
 					game_over("You got impaled  by spikes")
+					break
 		
 		if hero.y > dis_height:
 			game_over("You fell out of the world")
+			break
 		if hero.hp_curr <= 0:
 			game_over("You got slain")
+			break
 		
 		hero.display()
 		gui.displayGUI()
